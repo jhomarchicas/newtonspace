@@ -1,0 +1,879 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Newton Space | Feria de Física</title>
+<style>
+:root{
+  --bg:#080e23;
+  --panel:#111d3b;
+  --border:#30446c;
+  --cyan:#70e5ff;
+  --yellow:#ffd166;
+  --green:#55e5b0;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:#f4f7ff;
+  font-family:system-ui,-apple-system,Segoe UI,sans-serif;
+}
+button{font:inherit;cursor:pointer}
+header{
+  background:#101a36;border-bottom:1px solid var(--border);
+  padding:17px 5%;display:flex;align-items:center;
+  justify-content:space-between;gap:12px;flex-wrap:wrap;
+}
+.logo{font-size:24px;font-weight:900;color:var(--cyan)}
+.logo span{color:var(--yellow)}
+header small{color:#aebddd}
+main{max-width:1450px;margin:auto;padding:24px}
+h1{font-size:clamp(25px,4vw,37px);margin:0}
+.subtitle{color:#b5c5e5;margin:8px 0 23px;line-height:1.6}
+.layout{
+  display:grid;grid-template-columns:minmax(0,1fr) 315px;
+  gap:18px;align-items:start;
+}
+.game,.panel{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:19px;overflow:hidden;
+}
+.game-head{
+  padding:15px 18px;display:flex;justify-content:space-between;
+  align-items:center;gap:12px;flex-wrap:wrap;
+}
+#levelName{color:var(--cyan);font-weight:800}
+#starCount{color:var(--yellow);font-weight:800}
+canvas{
+  width:100%;height:auto;display:block;
+  background:#070e24;touch-action:none;
+}
+.toolbar{
+  display:flex;align-items:center;flex-wrap:wrap;
+  gap:9px;padding:14px 17px;
+}
+.btn{
+  border:0;background:#293d67;color:white;
+  padding:11px 16px;border-radius:11px;font-weight:750;
+}
+.btn:hover{filter:brightness(1.15)}
+.primary{background:#32c5e8;color:#062030}
+.success{background:#55e5b0;color:#08271f}
+.toolbar small{color:#aebddd}
+.panel{padding:20px;margin-bottom:16px}
+.panel h2{font-size:18px;margin:0 0 13px}
+.panel h3{font-size:16px;color:#8feaff}
+.panel p{font-size:14px;line-height:1.7;color:#c2cde5}
+.formula{
+  padding:15px;background:#22365d;border-radius:12px;
+  text-align:center;color:#82e9ff;font-size:22px;
+  font-weight:850;margin:14px 0;
+}
+.tip{
+  background:#26385b;border-left:3px solid var(--yellow);
+  border-radius:9px;padding:13px;color:#e5eeff;
+  font-size:13px;line-height:1.7;
+}
+.stat{
+  display:flex;justify-content:space-between;gap:10px;
+  padding:11px 0;border-bottom:1px solid #2b3d62;
+  font-size:13px;
+}
+.stat strong{color:#85eaff;text-align:right}
+.controls{text-align:center;padding:13px}
+.controls button{
+  width:57px;height:51px;margin:3px;
+  border:1px solid #5777a8;background:#263e6d;
+  color:white;border-radius:12px;font-size:23px;
+  touch-action:none;user-select:none;
+}
+.controls button:active{background:#34c4eb}
+.overlay{
+  position:fixed;inset:0;z-index:50;
+  display:flex;justify-content:center;align-items:center;
+  padding:18px;background:#050a1de8;
+}
+.modal{
+  width:100%;max-width:540px;max-height:90vh;overflow:auto;
+  background:#17264a;border:1px solid #4c689b;
+  border-radius:24px;padding:30px;text-align:center;
+  box-shadow:0 25px 90px #0009;
+}
+.emoji{font-size:52px}
+.modal h2{font-size:27px;margin:12px 0}
+.modal p{color:#c6d4ef;line-height:1.75}
+.mission-box{
+  background:#21365c;text-align:left;
+  padding:17px;border-radius:14px;margin-top:15px;
+  line-height:1.7;font-size:14px;color:#e0ecff;
+}
+.mission-box strong{color:#8ceaff}
+.hidden{display:none!important}
+footer{text-align:center;color:#93a3c6;padding:24px;font-size:13px}
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr}
+  .side{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+  .panel{margin:0}
+}
+@media(max-width:600px){
+  main{padding:12px}
+  .side{grid-template-columns:1fr}
+  .modal{padding:22px}
+  .toolbar small{width:100%}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🚀 NEWTON <span>SPACE</span></div>
+  <small>Laboratorio interactivo • Feria educativa de Física</small>
+</header>
+
+<main>
+  <h1>Desafíos espaciales 🌌</h1>
+  <p class="subtitle">
+    Controla tu astronauta, experimenta las leyes de Newton,
+    aprovecha la gravedad y supera obstáculos espaciales.
+  </p>
+
+  <div class="layout">
+    <section class="game">
+      <div class="game-head">
+        <strong id="levelName">Misión 1</strong>
+        <strong id="starCount">⭐ 0 / 4</strong>
+      </div>
+
+      <canvas id="canvas" width="900" height="540"></canvas>
+
+      <div class="toolbar">
+        <button class="btn primary" onclick="newGame()">▶ Nueva partida</button>
+        <button class="btn" onclick="togglePause()">⏸ Pausa</button>
+        <button class="btn" onclick="restart()">↻ Reiniciar misión</button>
+        <small>WASD / Flechas · P: pausa · R: reiniciar</small>
+      </div>
+
+      <div class="controls">
+        <div><button data-key="ArrowUp">▲</button></div>
+        <div>
+          <button data-key="ArrowLeft">◀</button>
+          <button data-key="ArrowDown">▼</button>
+          <button data-key="ArrowRight">▶</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="panel">
+        <h2>🧪 Laboratorio de física</h2>
+        <h3 id="lawTitle"></h3>
+        <p id="lawText"></p>
+        <div class="formula" id="formula"></div>
+        <div class="tip" id="experiment"></div>
+      </section>
+
+      <section class="panel">
+        <h2>📡 Telemetría</h2>
+        <div class="stat"><span>Velocidad</span><strong id="speed">0 m/s</strong></div>
+        <div class="stat"><span>Aceleración total</span><strong id="acceleration">0 m/s²</strong></div>
+        <div class="stat"><span>Fuerza propulsora</span><strong id="thrustForce">0 N</strong></div>
+        <div class="stat"><span>Fuerza gravitacional</span><strong id="gravityForce">0 N</strong></div>
+        <div class="stat"><span>Masa</span><strong>80 kg</strong></div>
+        <div class="stat"><span>Estrellas</span><strong id="collected">0</strong></div>
+      </section>
+
+      <section class="panel">
+        <h2>🪐 Guía espacial</h2>
+        <p>
+          Los círculos alrededor de los planetas indican
+          dónde su gravedad se representa con mayor intensidad.
+        </p>
+        <div class="tip">
+          💡 Al acercarte a un planeta, observa cómo cambia
+          tu trayectoria incluso sin encender los propulsores.
+          Para escapar, acelera en dirección contraria.
+        </div>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<footer>Newton Space • Aprende experimentando • Física interactiva</footer>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="emoji" id="modalEmoji">🚀</div>
+    <h2 id="modalTitle">Newton Space</h2>
+    <p id="modalText"></p>
+    <div class="mission-box" id="missionDetails"></div>
+    <button class="btn success" id="modalButton">Comenzar</button>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const W=900,H=540;
+const $=id=>document.getElementById(id);
+
+const SCALE=20;
+const MASS=80;
+const THRUST=240;
+const MAX_SPEED=270;
+const G=1200000;
+
+const missions=[
+  {
+    name:"Misión 1 — El misterio de la inercia",
+    law:"Primera ley de Newton",
+    text:"Si la fuerza neta sobre un objeto es cero, conserva su velocidad. En el espacio, sin rozamiento, puedes continuar moviéndote aunque apagues los propulsores.",
+    formula:"ΣF = 0 → a = 0",
+    experiment:"Acelera y suelta los controles en una región alejada del planeta. Observa que mantienes tu velocidad cuando la fuerza neta es prácticamente cero.",
+    intro:"¡Bienvenido, astronauta! Tu primera misión consiste en recuperar cuatro estrellas perdidas. Descubrirás por qué sigues moviéndote después de apagar los propulsores y cómo un planeta puede alterar tu trayectoria.",
+    objective:"Recoge 4 estrellas y evita los obstáculos.",
+    target:4,
+    spawn:[85,275],
+    stars:[[160,110],[340,440],[600,100],[785,410]],
+    planets:[{x:505,y:290,r:44,mass:1.2,color:"#5e9fff"}],
+    walls:[[270,230,30,115],[720,190,30,105]],
+    meteors:[],
+    crate:false
+  },
+  {
+    name:"Misión 2 — Fuerza y aceleración",
+    law:"Segunda ley de Newton",
+    text:"La aceleración depende de la fuerza neta y de la masa. Aplicando la misma fuerza, un objeto de mayor masa adquiere menor aceleración.",
+    formula:"ΣF = m · a",
+    experiment:"Empuja la caja hacia la estación de carga. Compara cómo responde un objeto de 240 kg frente al astronauta de 80 kg.",
+    intro:"¡Excelente trabajo! Ahora una estación espacial necesita ayuda. Debes trasladar una caja de suministros mientras la gravedad de un planeta cercano modifica tu movimiento.",
+    objective:"Recoge 3 estrellas y lleva la caja amarilla hasta la zona verde.",
+    target:3,
+    spawn:[85,285],
+    stars:[[145,105],[425,100],[795,425]],
+    planets:[{x:465,y:115,r:35,mass:.65,color:"#b48aff"}],
+    walls:[[260,185,28,110],[590,340,30,100]],
+    meteors:[],
+    crate:true
+  },
+  {
+    name:"Misión 3 — Acción y reacción",
+    law:"Tercera ley de Newton",
+    text:"Cuando el astronauta expulsa gases mediante sus propulsores, los gases ejercen una fuerza opuesta sobre él. Son fuerzas iguales y opuestas que actúan sobre cuerpos diferentes.",
+    formula:"F₁₂ = −F₂₁",
+    experiment:"Observa que el fuego sale en dirección contraria a tu aceleración propulsora. Combina esa fuerza con la gravedad para esquivar meteoritos.",
+    intro:"¡Última misión! Una lluvia de meteoritos amenaza tu ruta. Deberás dominar tus propulsores, superar obstáculos y navegar entre dos campos gravitacionales para alcanzar el portal de regreso.",
+    objective:"Recoge 4 estrellas, esquiva los meteoritos y entra al portal.",
+    target:4,
+    spawn:[75,270],
+    stars:[[145,100],[365,420],[635,100],[770,405]],
+    planets:[
+      {x:370,y:195,r:37,mass:.85,color:"#ff8d86"},
+      {x:635,y:340,r:43,mass:1.05,color:"#76dcae"}
+    ],
+    walls:[[245,260,25,95],[525,95,28,95]],
+    meteors:[
+      {x:470,y:310,r:19,amp:55,speed:1.1,phase:0},
+      {x:735,y:180,r:22,amp:65,speed:1.5,phase:1.8}
+    ],
+    crate:false
+  }
+];
+
+let level=0;
+let running=false;
+let paused=false;
+let completed=false;
+let stars=[];
+let planets=[];
+let walls=[];
+let meteors=[];
+let crate=null;
+let collected=0;
+let delivered=false;
+let particles=[];
+let frame=0;
+let last=0;
+let elapsed=0;
+let thrustMagnitude=0;
+let gravityMagnitude=0;
+let accelerationMagnitude=0;
+
+const keys={};
+const player={x:85,y:275,vx:0,vy:0,r:17};
+
+const background=Array.from({length:145},()=>({
+  x:Math.random()*W,
+  y:Math.random()*H,
+  r:.4+Math.random()*1.5,
+  phase:Math.random()*6.28
+}));
+
+function modal(emoji,title,text,details,button,callback){
+  $("modalEmoji").textContent=emoji;
+  $("modalTitle").textContent=title;
+  $("modalText").textContent=text;
+  $("missionDetails").textContent=details;
+  $("missionDetails").classList.toggle("hidden",!details);
+  $("modalButton").textContent=button;
+  $("modalButton").onclick=callback;
+  $("overlay").classList.remove("hidden");
+}
+
+function hideModal(){
+  $("overlay").classList.add("hidden");
+}
+
+function clearKeys(){
+  Object.keys(keys).forEach(k=>keys[k]=false);
+}
+
+function prepareLevel(){
+  const m=missions[level];
+  [player.x,player.y]=m.spawn;
+  player.vx=0;
+  player.vy=0;
+  collected=0;
+  delivered=false;
+  elapsed=0;
+  frame=0;
+  particles=[];
+  stars=m.stars.map(([x,y])=>({x,y,taken:false}));
+  planets=m.planets.map(p=>({...p}));
+  walls=m.walls.map(([x,y,w,h])=>({x,y,w,h}));
+  meteors=m.meteors.map(o=>({...o,y0:o.y}));
+  crate=m.crate?{
+    x:425,y:290,vx:0,vy:0,r:25,mass:240
+  }:null;
+  $("levelName").textContent=m.name;
+  $("lawTitle").textContent=m.law;
+  $("lawText").textContent=m.text;
+  $("formula").textContent=m.formula;
+  $("experiment").textContent=m.experiment;
+  clearKeys();
+  updateHUD();
+}
+
+function missionIntro(){
+  const m=missions[level];
+  running=false;
+  paused=false;
+  modal("🧑‍🚀",m.name,m.intro,
+    "OBJETIVO: "+m.objective+
+    "\n\nFÍSICA: "+m.law,
+    "¡Iniciar misión!",()=>{
+      running=true;
+      hideModal();
+    });
+}
+
+function newGame(){
+  level=0;
+  completed=false;
+  prepareLevel();
+  missionIntro();
+}
+
+function restart(){
+  completed=false;
+  prepareLevel();
+  missionIntro();
+}
+
+function togglePause(){
+  if(completed)return;
+  if(paused){
+    paused=false;
+    running=true;
+    hideModal();
+  }else if(running){
+    paused=true;
+    running=false;
+    clearKeys();
+    modal("⏸️","Misión pausada",
+      "Tu astronauta está esperando instrucciones.",
+      "Recuerda observar la velocidad y las fuerzas.",
+      "Continuar",()=>{
+        paused=false;
+        running=true;
+        hideModal();
+      });
+  }
+}
+
+function fail(reason){
+  if(!running)return;
+  running=false;
+  clearKeys();
+  modal("☄️","¡Misión interrumpida!",
+    reason,
+    "Consejo: utiliza pequeños impulsos y corrige tu trayectoria antes de acercarte demasiado a los obstáculos.",
+    "Volver a intentar",restart);
+}
+
+function win(){
+  if(!running)return;
+  running=false;
+  clearKeys();
+  const explanations=[
+    "Has observado la inercia y cómo una fuerza gravitacional puede cambiar el movimiento.",
+    "Has utilizado fuerzas para mover una caja más pesada y comprobado la relación entre masa y aceleración.",
+    "Has aprovechado la propulsión por acción y reacción mientras navegabas entre planetas y meteoritos."
+  ];
+  modal("🏆","¡Misión completada!",
+    explanations[level],
+    "¡Excelente trabajo científico!",
+    level===2?"Volver a jugar":"Siguiente misión",
+    ()=>{
+      if(level===2){
+        completed=true;
+        newGame();
+      }else{
+        level++;
+        prepareLevel();
+        missionIntro();
+      }
+    });
+}
+
+function gravityAt(x,y){
+  let gx=0,gy=0;
+  for(const p of planets){
+    const dx=p.x-x;
+    const dy=p.y-y;
+    const d2=Math.max(65*65,dx*dx+dy*dy);
+    const d=Math.sqrt(d2);
+    const a=G*p.mass/d2;
+    gx+=dx/d*a;
+    gy+=dy/d*a;
+  }
+  return {x:gx,y:gy};
+}
+
+function circle(x,y,r,color){
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fillStyle=color;
+  ctx.fill();
+}
+
+function rounded(x,y,w,h,r,color){
+  ctx.beginPath();
+  ctx.roundRect(x,y,w,h,r);
+  ctx.fillStyle=color;
+  ctx.fill();
+}
+
+function collideCircleRect(body,wall){
+  const cx=Math.max(wall.x,Math.min(body.x,wall.x+wall.w));
+  const cy=Math.max(wall.y,Math.min(body.y,wall.y+wall.h));
+  let dx=body.x-cx,dy=body.y-cy;
+  let d=Math.hypot(dx,dy);
+  if(d>=body.r)return false;
+  if(d<.001){
+    const sides=[
+      {d:Math.abs(body.x-wall.x),nx:-1,ny:0},
+      {d:Math.abs(body.x-(wall.x+wall.w)),nx:1,ny:0},
+      {d:Math.abs(body.y-wall.y),nx:0,ny:-1},
+      {d:Math.abs(body.y-(wall.y+wall.h)),nx:0,ny:1}
+    ].sort((a,b)=>a.d-b.d);
+    const s=sides[0];
+    body.x+=s.nx*(body.r+s.d);
+    body.y+=s.ny*(body.r+s.d);
+  }else{
+    body.x+=dx/d*(body.r-d);
+    body.y+=dy/d*(body.r-d);
+  }
+  return true;
+}
+
+function clampBody(body){
+  body.x=Math.max(body.r,Math.min(W-body.r,body.x));
+  body.y=Math.max(body.r,Math.min(H-body.r,body.y));
+}
+
+function update(dt){
+  if(!running)return;
+  dt=Math.min(dt,.032);
+  elapsed+=dt;
+  frame++;
+
+  let dx=0,dy=0;
+  if(keys.ArrowLeft||keys.a)dx--;
+  if(keys.ArrowRight||keys.d)dx++;
+  if(keys.ArrowUp||keys.w)dy--;
+  if(keys.ArrowDown||keys.s)dy++;
+
+  const inputLength=Math.hypot(dx,dy);
+  if(inputLength){
+    dx/=inputLength;
+    dy/=inputLength;
+  }
+
+  const thrustAcc=THRUST/MASS*SCALE;
+  const tx=dx*thrustAcc;
+  const ty=dy*thrustAcc;
+  const gravity=gravityAt(player.x,player.y);
+
+  const ax=tx+gravity.x;
+  const ay=ty+gravity.y;
+
+  thrustMagnitude=inputLength?THRUST:0;
+  gravityMagnitude=Math.hypot(gravity.x,gravity.y)*MASS/SCALE;
+  accelerationMagnitude=Math.hypot(ax,ay)/SCALE;
+
+  player.vx+=ax*dt;
+  player.vy+=ay*dt;
+
+  const speed=Math.hypot(player.vx,player.vy);
+  if(speed>MAX_SPEED){
+    player.vx*=MAX_SPEED/speed;
+    player.vy*=MAX_SPEED/speed;
+  }
+
+  player.x+=player.vx*dt;
+  player.y+=player.vy*dt;
+  clampBody(player);
+
+  if(inputLength&&frame%2===0){
+    particles.push({
+      x:player.x-dx*23,
+      y:player.y-dy*23,
+      vx:-dx*115+(Math.random()-.5)*30,
+      vy:-dy*115+(Math.random()-.5)*30,
+      life:.45
+    });
+  }
+
+  particles.forEach(p=>{
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.life-=dt;
+  });
+  particles=particles.filter(p=>p.life>0);
+
+  for(const s of stars){
+    if(!s.taken&&Math.hypot(player.x-s.x,player.y-s.y)<30){
+      s.taken=true;
+      collected++;
+    }
+  }
+
+  for(const p of planets){
+    if(Math.hypot(player.x-p.x,player.y-p.y)<player.r+p.r-3){
+      fail("Has impactado contra un planeta. Su gravedad puede curvar tu trayectoria: controla tu velocidad y mantén una distancia segura.");
+      return;
+    }
+  }
+
+  for(const w of walls){
+    if(collideCircleRect(player,w)){
+      fail("Has chocado contra una estructura espacial.");
+      return;
+    }
+  }
+
+  for(const m of meteors){
+    m.y=m.y0+Math.sin(elapsed*m.speed+m.phase)*m.amp;
+    if(Math.hypot(player.x-m.x,player.y-m.y)<player.r+m.r-3){
+      fail("Un meteorito ha impactado tu traje espacial.");
+      return;
+    }
+  }
+
+  if(crate){
+    const bx=crate.x-player.x;
+    const by=crate.y-player.y;
+    const d=Math.hypot(bx,by);
+    if(d<crate.r+player.r&&d>.001){
+      const nx=bx/d,ny=by/d;
+      const overlap=crate.r+player.r-d;
+      crate.x+=nx*overlap*.65;
+      crate.y+=ny*overlap*.65;
+      player.x-=nx*overlap*.35;
+      player.y-=ny*overlap*.35;
+
+      const relative=(player.vx-crate.vx)*nx+
+                     (player.vy-crate.vy)*ny;
+      if(relative>0){
+        const impulse=relative/(1/MASS+1/crate.mass);
+        player.vx-=impulse*nx/MASS;
+        player.vy-=impulse*ny/MASS;
+        crate.vx+=impulse*nx/crate.mass;
+        crate.vy+=impulse*ny/crate.mass;
+      }
+    }
+
+    // La caja tiene amortiguación artificial para facilitar
+    // su colocación dentro de la estación de carga.
+    crate.x+=crate.vx*dt;
+    crate.y+=crate.vy*dt;
+    const damping=Math.exp(-1.5*dt);
+    crate.vx*=damping;
+    crate.vy*=damping;
+    clampBody(crate);
+
+    for(const w of walls){
+      if(collideCircleRect(crate,w)){
+        crate.vx=0;
+        crate.vy=0;
+      }
+    }
+
+    if(crate.x>705&&crate.x<825&&
+       crate.y>205&&crate.y<335){
+      delivered=true;
+    }
+  }
+
+  updateHUD();
+
+  if(collected===missions[level].target){
+    if(level===1&&!delivered)return;
+    if(level===2&&Math.hypot(player.x-820,player.y-270)>45)return;
+    win();
+  }
+}
+
+function updateHUD(){
+  $("starCount").textContent=
+    `⭐ ${collected} / ${missions[level].target}`;
+  $("collected").textContent=collected;
+  $("speed").textContent=
+    (Math.hypot(player.vx,player.vy)/SCALE).toFixed(2)+" m/s";
+  $("acceleration").textContent=
+    accelerationMagnitude.toFixed(2)+" m/s²";
+  $("thrustForce").textContent=
+    thrustMagnitude.toFixed(0)+" N";
+  $("gravityForce").textContent=
+    gravityMagnitude.toFixed(1)+" N";
+}
+
+function drawBackground(){
+  const grad=ctx.createLinearGradient(0,0,W,H);
+  grad.addColorStop(0,"#0a1737");
+  grad.addColorStop(1,"#170e37");
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  background.forEach(s=>{
+    ctx.globalAlpha=.4+.4*Math.sin(elapsed*1.5+s.phase);
+    circle(s.x,s.y,s.r,"#c5eaff");
+  });
+  ctx.globalAlpha=1;
+
+  ctx.strokeStyle="#ffffff0a";
+  ctx.lineWidth=1;
+  for(let x=0;x<W;x+=50){
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+  }
+  for(let y=0;y<H;y+=50){
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+  }
+}
+
+function drawPlanet(p){
+  const influence=p.r+105;
+  const gradient=ctx.createRadialGradient(
+    p.x,p.y,p.r,p.x,p.y,influence
+  );
+  gradient.addColorStop(0,"#78c8ff24");
+  gradient.addColorStop(1,"#78c8ff00");
+  circle(p.x,p.y,influence,gradient);
+
+  ctx.beginPath();
+  ctx.arc(p.x,p.y,influence,0,Math.PI*2);
+  ctx.strokeStyle="#72d7ff35";
+  ctx.lineWidth=2;
+  ctx.setLineDash([7,9]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.save();
+  ctx.shadowColor=p.color;
+  ctx.shadowBlur=22;
+  circle(p.x,p.y,p.r,p.color);
+  ctx.restore();
+
+  circle(p.x-p.r*.22,p.y-p.r*.25,p.r*.35,"#ffffff25");
+  circle(p.x+p.r*.3,p.y+p.r*.2,p.r*.18,"#14244935");
+
+  ctx.fillStyle="#d9f4ff";
+  ctx.font="bold 12px system-ui";
+  ctx.textAlign="center";
+  ctx.fillText("GRAVEDAD",p.x,p.y+p.r+23);
+}
+
+function drawStar(x,y){
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(elapsed*1.5);
+  ctx.shadowColor="#ffd35c";
+  ctx.shadowBlur=19;
+  ctx.fillStyle="#ffd35c";
+  ctx.beginPath();
+  for(let i=0;i<10;i++){
+    const angle=i*Math.PI/5-Math.PI/2;
+    const r=i%2===0?16:7;
+    const px=Math.cos(angle)*r;
+    const py=Math.sin(angle)*r;
+    if(i===0)ctx.moveTo(px,py);
+    else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawWall(w){
+  rounded(w.x,w.y,w.w,w.h,6,"#6c7d9e");
+  rounded(w.x+5,w.y+5,w.w-10,w.h-10,4,"#33496f");
+  ctx.fillStyle="#ffd16d";
+  for(let y=w.y+15;y<w.y+w.h-8;y+=24){
+    ctx.fillRect(w.x+8,y,w.w-16,5);
+  }
+}
+
+function drawMeteor(m){
+  circle(m.x,m.y,m.r,"#946b78");
+  circle(m.x-7,m.y-5,m.r*.26,"#5d455f");
+  circle(m.x+8,m.y+7,m.r*.2,"#5d455f");
+  circle(m.x-3,m.y+10,m.r*.12,"#c99496");
+}
+
+function drawPortal(){
+  ctx.save();
+  ctx.shadowColor="#4ce7ff";
+  ctx.shadowBlur=28;
+  ctx.strokeStyle="#4ce7ff";
+  ctx.lineWidth=7;
+  ctx.beginPath();
+  ctx.ellipse(820,270,35,56,0,0,Math.PI*2);
+  ctx.stroke();
+  ctx.fillStyle="#3ce5ff25";
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawAstronaut(){
+  ctx.save();
+  ctx.translate(player.x,player.y);
+
+  rounded(-19,-12,14,27,5,"#7790c5");
+  rounded(-14,3,28,26,8,"#f0f4ff");
+  rounded(-22,7,10,15,5,"#dce8ff");
+  rounded(12,7,10,15,5,"#dce8ff");
+  rounded(-13,24,11,10,4,"#a5b9e9");
+  rounded(2,24,11,10,4,"#a5b9e9");
+
+  circle(0,-10,21,"#f2f7ff");
+  circle(0,-10,16,"#4bd0f3");
+  circle(-5,-15,5,"#b7f3ff");
+  circle(-6,-8,2.5,"#16375b");
+  circle(6,-8,2.5,"#16375b");
+
+  ctx.strokeStyle="#16375b";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.arc(0,-5,5,.2,Math.PI-.2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function draw(){
+  drawBackground();
+
+  planets.forEach(drawPlanet);
+  walls.forEach(drawWall);
+  meteors.forEach(drawMeteor);
+
+  if(level===1){
+    ctx.strokeStyle="#54e6ac";
+    ctx.lineWidth=3;
+    ctx.setLineDash([8,7]);
+    ctx.strokeRect(705,205,120,130);
+    ctx.setLineDash([]);
+    ctx.fillStyle="#7ff2bd";
+    ctx.textAlign="center";
+    ctx.font="bold 13px system-ui";
+    ctx.fillText("CARGA",765,190);
+
+    if(crate){
+      rounded(crate.x-25,crate.y-25,50,50,7,"#ffcb60");
+      ctx.strokeStyle="#9e712e";
+      ctx.lineWidth=4;
+      ctx.strokeRect(crate.x-17,crate.y-17,34,34);
+    }
+  }
+
+  if(level===2)drawPortal();
+
+  stars.forEach(s=>{
+    if(!s.taken)drawStar(s.x,s.y);
+  });
+
+  particles.forEach(p=>{
+    ctx.globalAlpha=Math.max(0,p.life/.45);
+    circle(p.x,p.y,4+p.life*7,"#ffad53");
+  });
+  ctx.globalAlpha=1;
+
+  drawAstronaut();
+
+  ctx.fillStyle="#e0edff";
+  ctx.font="bold 15px system-ui";
+  ctx.textAlign="left";
+  const instructions=[
+    "Recoge estrellas y evita chocar con planetas y estructuras",
+    "Recoge estrellas y lleva la caja a la zona de carga",
+    "Recoge estrellas, esquiva meteoritos y alcanza el portal"
+  ];
+  ctx.fillText(instructions[level],20,30);
+}
+
+function loop(timestamp){
+  if(!last)last=timestamp;
+  const dt=(timestamp-last)/1000;
+  last=timestamp;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener("keydown",e=>{
+  const key=e.key.length===1?e.key.toLowerCase():e.key;
+  if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(key)){
+    e.preventDefault();
+  }
+  keys[key]=true;
+  if(key==="p"&&!e.repeat)togglePause();
+  if(key==="r"&&!e.repeat)restart();
+});
+
+window.addEventListener("keyup",e=>{
+  const key=e.key.length===1?e.key.toLowerCase():e.key;
+  keys[key]=false;
+});
+
+window.addEventListener("blur",clearKeys);
+
+document.querySelectorAll("[data-key]").forEach(button=>{
+  const key=button.dataset.key;
+  button.addEventListener("pointerdown",e=>{
+    e.preventDefault();
+    keys[key]=true;
+    button.setPointerCapture(e.pointerId);
+  });
+  const release=()=>keys[key]=false;
+  button.addEventListener("pointerup",release);
+  button.addEventListener("pointercancel",release);
+  button.addEventListener("lostpointercapture",release);
+});
+
+prepareLevel();
+missionIntro();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
