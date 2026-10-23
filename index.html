@@ -248,6 +248,18 @@ footer{
   .mission-grid{grid-template-columns:1fr}
   .toolbar small{width:100%}
 }
+#gameArea:fullscreen{width:100vw;height:100vh;max-width:none;border:0;border-radius:0;display:flex;flex-direction:column;background:#070d22;overflow:auto}
+#gameArea:fullscreen canvas{flex:1;min-height:0;max-height:calc(100vh - 190px);object-fit:contain;width:100%}
+#gameArea:fullscreen .controls{display:none}
+.volume-control{display:flex;align-items:center;gap:7px;color:#dcecff;font-size:13px;background:#24375d;padding:8px 10px;border-radius:10px}
+.volume-control input{width:105px;accent-color:#70e5ff;cursor:pointer}
+.volume-control output{min-width:34px;text-align:right}
+#deathCurtain{position:absolute;inset:0;z-index:8;pointer-events:none;opacity:0;background:#000;transition:opacity .9s ease;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#deathCurtain.active{opacity:1}
+#deathCurtain .heartbeat{position:absolute;width:220px;height:220px;border-radius:50%;border:3px solid #ff314b;box-shadow:0 0 55px #c00a, inset 0 0 50px #b006;animation:heartPulse .73s ease-in-out infinite;opacity:.8}
+#deathCurtain .deathText{color:#ff8295;font-weight:900;letter-spacing:.35em;text-shadow:0 0 25px #ff173e;font-size:clamp(16px,3vw,30px);z-index:2;animation:deathBlink 1.5s infinite}
+@keyframes heartPulse{0%,100%{transform:scale(.7);opacity:.15}15%{transform:scale(1.1);opacity:.9}32%{transform:scale(.83);opacity:.4}45%{transform:scale(1);opacity:.75}70%{transform:scale(.75);opacity:.12}}
+@keyframes deathBlink{50%{opacity:.35}}
 </style>
 </head>
 
@@ -326,15 +338,18 @@ footer{
   </p>
 
   <div class="layout">
-    <section class="game">
+    <section class="game" id="gameArea">
       <div class="game-head">
         <strong id="levelName">Misión 1</strong>
         <strong id="starCount" aria-label="Estrellas recogidas"><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-star"/></svg> <span id="starProgress">0 / 4</span></strong>
       </div>
 
-      <canvas id="canvas" width="900" height="540"></canvas>
+      <div id="playfield" style="position:relative"><canvas id="canvas" width="900" height="540"></canvas><div id="deathCurtain" aria-hidden="true"><div class="heartbeat"></div><div class="deathText">SEÑAL PERDIDA</div></div></div>
 
       <div class="toolbar">
+        <button class="btn" id="soundToggle" onclick="toggleSound()" aria-label="Activar o silenciar sonidos">🔊 Sonido: activado</button>
+        <label class="volume-control" for="musicSlider">🎵 Música <input id="musicSlider" type="range" min="0" max="100" value="85" oninput="setMusicVolume(this.value)" aria-label="Volumen de música"><output id="musicValue">85%</output></label><label class="volume-control" for="effectsSlider">🔊 Efectos <input id="effectsSlider" type="range" min="0" max="100" value="85" oninput="setEffectsVolume(this.value)" aria-label="Volumen de efectos"><output id="effectsValue">85%</output></label>
+        <button class="btn" id="fullscreenBtn" onclick="toggleGameFullscreen()">⛶ Pantalla completa</button>
         <button class="btn success" onclick="showMissionSelector()">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-map"/></svg> Elegir misión
         </button>
@@ -491,10 +506,228 @@ const $=id=>document.getElementById(id);
 const SCALE=20;
 const MASS=80;
 const THRUST=420;
-const CONTROL_RESPONSE=5.2; // Respuesta rápida al cambiar dirección
+const CONTROL_RESPONSE=5.6; // Respuesta rápida al cambiar dirección
 const GRAVITY_REACH=205; // Campo gravitacional perceptible desde más lejos // Distancia adicional desde la superficie
-const MAX_SPEED=70; // Movimiento ligeramente más rápido, con inercia
+const MAX_SPEED=118; // Movimiento ligeramente más rápido, con inercia
 const G=2100000; // Atracción planetaria más intensa
+
+
+// Motor de audio: ruido filtrado, capas graves y efectos con envolventes.
+let audioCtx=null, soundEnabled=true, engine=null, engineGain=null, engineFilter=null, masterGain=null;
+let musicVolume=.85,effectsVolume=.85,musicVolumeGain=null,effectsVolumeGain=null;
+let musicBus=null,musicFilter=null,musicStep=0,musicNext=0,musicMood="normal",deathFx=null,deathPending=false;
+function audioOutput(){return effectsVolumeGain||masterGain||audioCtx.destination;}
+function setMusicVolume(value){musicVolume=Math.max(0,Math.min(1,Number(value)/100));$("musicValue").textContent=Math.round(musicVolume*100)+"%";if(musicVolumeGain&&audioCtx)musicVolumeGain.gain.setTargetAtTime(musicVolume,audioCtx.currentTime,.045);}
+function setEffectsVolume(value){effectsVolume=Math.max(0,Math.min(1,Number(value)/100));$("effectsValue").textContent=Math.round(effectsVolume*100)+"%";if(effectsVolumeGain&&audioCtx)effectsVolumeGain.gain.setTargetAtTime(effectsVolume,audioCtx.currentTime,.045);}
+function toggleGameFullscreen(){const area=$("gameArea");if(document.fullscreenElement)document.exitFullscreen();else area.requestFullscreen?.().catch(()=>{});}
+document.addEventListener("fullscreenchange",()=>{$("fullscreenBtn").textContent=document.fullscreenElement?"⤢ Salir de pantalla completa":"⛶ Pantalla completa";});
+function unlockAudio(){
+  if(!soundEnabled)return;
+  try{audioCtx ||= new (window.AudioContext||window.webkitAudioContext)();if(!masterGain){masterGain=audioCtx.createGain();masterGain.gain.value=1.35;masterGain.connect(audioCtx.destination);musicVolumeGain=audioCtx.createGain();musicVolumeGain.gain.value=musicVolume;musicVolumeGain.connect(masterGain);effectsVolumeGain=audioCtx.createGain();effectsVolumeGain.gain.value=effectsVolume;effectsVolumeGain.connect(masterGain);}if(audioCtx.state==="suspended")audioCtx.resume();setupMusic();}
+  catch(e){soundEnabled=false;updateSoundButton();}
+}
+function updateSoundButton(){const b=$("soundToggle");if(b)b.textContent=soundEnabled?"🔊 Sonido: activado":"🔇 Sonido: apagado";}
+function toggleSound(){soundEnabled=!soundEnabled;if(soundEnabled)unlockAudio();else {stopEngine();if(musicBus)musicBus.gain.value=0;}updateSoundButton();if(soundEnabled)setupMusic();if(soundEnabled)playSound("menu");}
+// Banda sonora original: composición electrónica cinematográfica por secciones,
+// armonía real, melodías con motivos y variaciones, bajo, batería y capas atmosféricas.
+function setupMusic(){
+  if(!audioCtx)return;
+  if(!musicBus){
+    musicBus=audioCtx.createGain();musicBus.gain.value=0;
+    musicFilter=audioCtx.createBiquadFilter();musicFilter.type="lowpass";
+    musicFilter.frequency.value=5200;
+    const compressor=audioCtx.createDynamicsCompressor();
+    compressor.threshold.value=-19;compressor.knee.value=16;
+    compressor.ratio.value=3;compressor.attack.value=.008;compressor.release.value=.2;
+    musicBus.connect(musicFilter).connect(compressor).connect(musicVolumeGain);
+    musicNext=audioCtx.currentTime+.12;
+  }
+  setMusicMood(musicMood);
+}
+function musicNote(freq,time,duration,volume=.12,type="triangle",attack=.015,filterFreq=0){
+  if(!audioCtx||!musicBus||freq<=0)return;
+  const osc=audioCtx.createOscillator(),g=audioCtx.createGain();
+  osc.type=type;osc.frequency.setValueAtTime(freq,time);
+  const end=time+Math.max(.055,duration);
+  g.gain.setValueAtTime(.0001,time);
+  g.gain.linearRampToValueAtTime(Math.max(.0002,volume),time+Math.min(attack,duration*.4));
+  g.gain.setTargetAtTime(.0001,Math.max(time+.035,end-.09),.045);
+  if(filterFreq){const f=audioCtx.createBiquadFilter();f.type="lowpass";f.frequency.setValueAtTime(filterFreq,time);f.frequency.exponentialRampToValueAtTime(Math.max(350,filterFreq*.55),end);osc.connect(f).connect(g);}else osc.connect(g);
+  g.connect(musicBus);osc.start(time);osc.stop(end+.12);
+}
+function musicDrum(time,kind,accent=1){
+  if(!audioCtx||!musicBus)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.type=kind==="kick"?"sine":"triangle";
+  const f=kind==="kick"?158:kind==="snare"?205:1050;
+  o.frequency.setValueAtTime(f,time);
+  o.frequency.exponentialRampToValueAtTime(kind==="kick"?42:kind==="snare"?88:490,time+(kind==="hat"?.055:.17));
+  g.gain.setValueAtTime((kind==="kick"?.38:kind==="snare"?.10:.035)*accent,time);
+  g.gain.exponentialRampToValueAtTime(.0001,time+(kind==="hat"?.09:.23));
+  o.connect(g).connect(musicBus);o.start(time);o.stop(time+.26);
+  if(kind!=="kick"){
+    cachedNoise ||= noiseBuffer();
+    const n=audioCtx.createBufferSource(),filt=audioCtx.createBiquadFilter(),ng=audioCtx.createGain();
+    n.buffer=cachedNoise;filt.type="highpass";filt.frequency.value=kind==="hat"?5900:1700;
+    ng.gain.setValueAtTime((kind==="hat"?.045:.11)*accent,time);
+    ng.gain.exponentialRampToValueAtTime(.0001,time+(kind==="hat"?.08:.16));
+    n.connect(filt).connect(ng).connect(musicBus);n.start(time);n.stop(time+.19);
+  }
+}
+// Banda sonora dreamspace: pads amplios, acordes maj9/min9, arpegios fluidos,
+// bajo cálido y melodías largas que cambian con cada sección.
+const MUSIC_BPM=112;
+const musicHarmony=[
+ {root:55,chord:[0,3,7,10,14],bass:[0,7,10,14]},   // Am9
+ {root:43.6535,chord:[0,4,7,11,14],bass:[0,7,11,14]}, // Fmaj9
+ {root:65.4064,chord:[0,4,7,11,14],bass:[0,7,11,14]}, // Cmaj9
+ {root:49,chord:[0,4,7,10,14],bass:[0,7,10,14]}, // G9
+ {root:48.9994,chord:[0,3,7,10,14],bass:[0,7,10,14]}, // Gm9
+ {root:43.6535,chord:[0,4,7,11,14],bass:[0,7,11,14]}, // Fmaj9
+ {root:41.2034,chord:[0,4,7,11,14],bass:[0,7,11,14]}, // Emaj9
+ {root:49,chord:[0,4,7,10,14],bass:[0,7,10,14]} // G9
+];
+const musicMotifs=[
+ [[0,19,4],[5,22,2],[8,26,4],[13,24,3]],
+ [[1,26,3],[5,24,3],[9,22,2],[12,19,4]],
+ [[0,14,3],[4,19,3],[8,22,4],[13,26,3]],
+ [[2,26,4],[7,24,3],[11,19,5]],
+ [[0,22,3],[4,26,4],[9,29,3],[13,26,3]],
+ [[0,24,5],[6,22,2],[9,19,3],[13,17,3]],
+ [[1,19,3],[5,22,4],[10,26,3],[14,29,2]],
+ [[0,29,3],[4,26,3],[8,24,3],[12,22,4]],
+ [[0,26,4],[5,29,3],[9,31,3],[13,29,3]],
+ [[0,22,3],[4,19,3],[8,17,4],[13,19,3]],
+ [[1,19,4],[6,24,3],[10,26,3],[14,24,2]],
+ [[0,26,5],[6,22,3],[10,19,5]]
+];
+function dreamPad(freq,t,duration,vol=.027){
+  if(!audioCtx||!musicBus)return;
+  for(const detune of [-7,0,7]){
+    const osc=audioCtx.createOscillator(),gain=audioCtx.createGain(),filter=audioCtx.createBiquadFilter();
+    osc.type=detune===0?'triangle':'sine';osc.frequency.value=freq;osc.detune.value=detune;
+    filter.type='lowpass';filter.frequency.value=1350;
+    gain.gain.setValueAtTime(.0001,t);gain.gain.linearRampToValueAtTime(vol/3,t+.55);
+    gain.gain.setValueAtTime(vol/3,t+Math.max(.65,duration-.7));
+    gain.gain.exponentialRampToValueAtTime(.0001,t+duration+.65);
+    osc.connect(filter).connect(gain).connect(musicBus);osc.start(t);osc.stop(t+duration+.7);
+  }
+}
+function dreamBell(freq,t,duration,vol=.05){
+  musicNote(freq,t,duration,vol,'sine',.045);
+  musicNote(freq*2.003,t,duration*.6,vol*.18,'sine',.018);
+}
+function updateMusic(){
+ if(!audioCtx||!soundEnabled||!musicBus)return;
+ const now=audioCtx.currentTime;
+ if(musicNext<now-.5)musicNext=now+.03;
+ const sixteenth=60/MUSIC_BPM/4,beat=sixteenth*4;
+ while(musicNext<now+.32){
+   const step=musicStep%16,bar=Math.floor(musicStep/16),section=Math.floor(bar/8)%4;
+   const h=musicHarmony[bar%8],t=musicNext,root=h.root;
+   const intensity=[.7,.85,.78,.95][section];
+   // Percusión espacial: pulso profundo, caja tenue y brillo sutil.
+   if(step===0||step===8)musicDrum(t,'kick',.65*intensity);
+   if(step===4||step===12)musicDrum(t,'snare',.33*intensity);
+   if([2,6,10,14].includes(step))musicDrum(t,'hat',.27*intensity);
+   if(section===3&&[3,11].includes(step))musicDrum(t,'hat',.18);
+   // Cada compás respira con un colchón armónico completo y cambios de inversión.
+   if(step===0){
+     h.chord.forEach((semi,i)=>dreamPad(root*4*Math.pow(2,semi/12),t,beat*4.6,.028*intensity));
+     dreamPad(root*2,t,beat*4.2,.025*intensity);
+   }
+   // Arpegios ondulantes con desplazamientos de registro y silencios.
+   if([0,2,4,7,9,12,14].includes(step)){
+     const idx=[0,2,4,7,9,12,14].indexOf(step);
+     const order=[0,2,4,3,1,2,3];
+     const semi=h.chord[order[(idx+Math.floor(bar/4))%7]];
+     const octave=(bar%4===3&&idx>3)?16:8;
+     dreamBell(root*octave*Math.pow(2,semi/12),t,sixteenth*(idx%3===0?4.8:2.8),.034*intensity);
+   }
+   // Bajo suave con variaciones melódicas y síncopa.
+   if([0,6,10].includes(step)){
+     const semi=h.bass[step===0?0:step===6?1:(bar%2?3:2)];
+     musicNote(root*Math.pow(2,semi/12),t,beat*(step===0?1.5:.85),.17*intensity,'sine',.06);
+   }
+   // Melodías más largas, con frases de 12 compases y descansos.
+   const phrase=musicMotifs[(bar+Math.floor(bar/12)*3)%musicMotifs.length];
+   for(const [on,semi,dur] of phrase){
+     if(on===step){
+       const freq=root*4*Math.pow(2,semi/12);
+       dreamBell(freq,t,sixteenth*(dur+1.5),.072*intensity);
+       if(section===2||section===3)musicNote(freq*.5,t+.04,sixteenth*(dur+1.1),.021*intensity,'triangle',.09,1800);
+     }
+   }
+   // Respuestas lejanas que aparecen solo en ciertas secciones.
+   if(section>=1&&[3,11].includes(step)){
+     const semi=h.chord[(bar+step)%h.chord.length]+12;
+     dreamBell(root*4*Math.pow(2,semi/12),t,sixteenth*5,.019*intensity);
+   }
+   musicStep++;musicNext+=sixteenth;
+ }
+}
+function setMusicMood(mood){
+  musicMood=mood;if(!audioCtx||!musicFilter||!musicBus)return;
+  const t=audioCtx.currentTime;
+  musicFilter.frequency.cancelScheduledValues(t);
+  musicFilter.frequency.setTargetAtTime(mood==="death"?95:mood==="pause"?900:3800,t,mood==="death"?.22:.32);
+  musicBus.gain.setTargetAtTime(!soundEnabled?0:mood==="death"?.23:mood==="pause"?.16:.52,t,.28);
+}
+function noiseBuffer(){
+  const len=Math.floor(audioCtx.sampleRate*2),b=audioCtx.createBuffer(1,len,audioCtx.sampleRate),data=b.getChannelData(0);
+  for(let i=0;i<len;i++)data[i]=Math.random()*2-1;
+  return b;
+}
+let cachedNoise=null;
+function burst(duration,volume,cutoff=900,lowpass=true,delay=0){
+  if(!soundEnabled||!audioCtx)return;
+  cachedNoise ||= noiseBuffer();const t=audioCtx.currentTime+delay;
+  const src=audioCtx.createBufferSource(),filter=audioCtx.createBiquadFilter(),gain=audioCtx.createGain();
+  src.buffer=cachedNoise;filter.type=lowpass?"lowpass":"highpass";filter.frequency.value=cutoff;
+  gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(Math.max(.0002,volume),t+.02);
+  gain.gain.exponentialRampToValueAtTime(.0001,t+duration);
+  src.connect(filter).connect(gain).connect(audioOutput());src.start(t);src.stop(t+duration+.03);
+}
+function tone(freq,duration,type="sine",gain=.08,endFreq=null,delay=0){
+  if(!soundEnabled||!audioCtx)return;
+  const t=audioCtx.currentTime+delay,osc=audioCtx.createOscillator(),vol=audioCtx.createGain();
+  osc.type=type;osc.frequency.setValueAtTime(Math.max(30,freq),t);
+  if(endFreq)osc.frequency.exponentialRampToValueAtTime(Math.max(30,endFreq),t+duration);
+  vol.gain.setValueAtTime(.0001,t);vol.gain.exponentialRampToValueAtTime(Math.max(.0002,gain),t+.015);
+  vol.gain.exponentialRampToValueAtTime(.0001,t+duration);
+  osc.connect(vol).connect(audioOutput());osc.start(t);osc.stop(t+duration+.03);
+}
+function startEngine(){
+  if(!soundEnabled||!audioCtx||engine)return;
+  cachedNoise ||= noiseBuffer();engine=audioCtx.createBufferSource();engine.buffer=cachedNoise;engine.loop=true;
+  engineFilter=audioCtx.createBiquadFilter();engineFilter.type="lowpass";engineFilter.frequency.value=210;
+  engineGain=audioCtx.createGain();engineGain.gain.value=.0001;
+  engine.connect(engineFilter).connect(engineGain).connect(audioOutput());engine.start();
+}
+function stopEngine(){
+  if(engine){try{engine.stop()}catch(e){}engine.disconnect();engine=null;engineGain=null;engineFilter=null;}
+}
+function updateEngine(active){
+  if(!active||!soundEnabled||!audioCtx){stopEngine();return;}
+  startEngine();if(!engine)return;
+  const t=audioCtx.currentTime;
+  engineGain.gain.setTargetAtTime(.075,t,.09);
+  engineFilter.frequency.setTargetAtTime(320+Math.sin(elapsed*23)*65,t,.06);
+}
+function playSound(kind,volume=1){
+  if(!soundEnabled||!audioCtx)return;
+  if(kind==="shoot"){tone(840,.21,"sawtooth",.022*volume,160);burst(.12,.055*volume,1800,false);}
+  if(kind==="star"){[660,880,1320].forEach((f,i)=>tone(f,.25,"sine",.065*volume,f*1.22,i*.08));}
+  if(kind==="hit"){burst(.8,.20*volume,1100);tone(190,.7,"sawtooth",.09*volume,38);tone(76,.8,"triangle",.11*volume,32);}
+  if(kind==="win"){[523,659,784,1047,1318].forEach((f,i)=>tone(f,.35,"triangle",.055*volume,f*1.07,i*.12));}
+  if(kind==="menu")tone(480,.14,"sine",.06*volume,730);
+  if(kind==="delivery"){tone(320,.25,"triangle",.08*volume,650);tone(880,.4,"sine",.07*volume,1250,.17);}
+  if(kind==="restart"){burst(.43,.11*volume,700);tone(390,.52,"sawtooth",.055*volume,75);tone(75,.48,"sine",.12*volume,42);}
+  if(kind==="laser")tone(1100,.32,"square",.024*volume,120);
+  if(kind==="mine"){tone(260,.24,"triangle",.045*volume,95);burst(.18,.09*volume,500);}
+}
+window.addEventListener("pointerdown",unlockAudio,{passive:true});
+window.addEventListener("keydown",unlockAudio);
 
 const missions=[
   {
@@ -576,6 +809,8 @@ let walls=[];
 let meteors=[];
 let sentries=[];
 let projectiles=[];
+let hazards=[];
+let enemyClock=0;
 let shotTimer=0;
 let crate=null;
 let collected=0;
@@ -602,7 +837,8 @@ const background=Array.from({length:145},()=>({
 
 function modal(icon,title,text,details,button,callback){
   $("modalIcon").setAttribute("href","#icon-"+icon);
-  $("modalTitle").textContent=title;
+  $("modalTitle").textContent=title;$("modalTitle").style.color="";
+  const old=$("deathChoose");if(old)old.remove();
   $("modalText").textContent=text;
   $("missionDetails").textContent=details;
   $("missionDetails").classList.toggle("hidden",!details);
@@ -621,6 +857,8 @@ function clearKeys(){
 
 // Selección de misiones
 function showMissionSelector(){
+  playSound("menu",.22);
+  setMusicMood("pause");
   selectorWasRunning=running;
   running=false;
   clearKeys();
@@ -629,11 +867,12 @@ function showMissionSelector(){
 
 function closeMissionSelector(){
   $("missionSelector").classList.add("hidden");
-  running=selectorWasRunning;
+  running=selectorWasRunning;setMusicMood("normal");
 }
 
 function selectMission(index){
   if(index<0||index>=missions.length)return;
+  unlockAudio();playSound("menu");
   $("missionSelector").classList.add("hidden");
   $("overlay").classList.add("hidden");
   level=index;
@@ -656,10 +895,14 @@ function prepareLevel(){
   trail=[];
   projectiles=[];
   shotTimer=0;
+  enemyClock=0;
+  deathFx=null;deathPending=false;$("deathCurtain").classList.remove("active");setMusicMood("normal");
+  stopEngine();
+  hazards=makeHazards(level);
   const sentryPositions=[
-    [{x:795,y:115}],
-    [{x:825,y:110}],
-    [{x:450,y:475},{x:805,y:115}]
+    [{x:795,y:115},{x:430,y:470}],
+    [{x:825,y:110},{x:660,y:475},{x:140,y:460}],
+    [{x:450,y:475},{x:805,y:115},{x:115,y:445},{x:810,y:475}]
   ];
   sentries=sentryPositions[level].map((v,i)=>({...v,phase:i*2.1}));
   thrustMagnitude=0;
@@ -695,7 +938,7 @@ function missionIntro(){
     "OBJETIVO: "+m.objective+"\n\nFÍSICA: "+m.law,
     "¡Iniciar misión!",
     ()=>{
-      running=true;
+      running=true;setMusicMood("normal");
       hideModal();
     }
   );
@@ -710,6 +953,7 @@ function newGame(){
 }
 
 function restart(){
+  unlockAudio();playSound("restart");
   completed=false;
   $("missionSelector").classList.add("hidden");
   prepareLevel();
@@ -717,14 +961,15 @@ function restart(){
 }
 
 function togglePause(){
+  stopEngine();
   if(completed||!$("missionSelector").classList.contains("hidden")||(!$("overlay").classList.contains("hidden")&&!paused))return;
   if(paused){
     paused=false;
-    running=true;
+    running=true;setMusicMood("normal");
     hideModal();
   }else if(running){
     paused=true;
-    running=false;
+    running=false;setMusicMood("pause");
     clearKeys();
     modal(
       "pause",
@@ -742,21 +987,43 @@ function togglePause(){
 }
 
 function fail(reason){
-  if(!running)return;
-  running=false;
-  clearKeys();
-  modal(
-    "meteor",
-    "¡Misión interrumpida!",
-    reason,
-    "Consejo: utiliza pequeños impulsos y corrige tu trayectoria antes de acercarte demasiado a los obstáculos.",
-    "Volver a intentar",
-    restart
-  );
+  if(!running||deathPending)return;
+  stopEngine();playSound("hit");setMusicMood("death");startHeartbeat();$("deathCurtain").classList.add("active");
+  running=false;deathPending=true;clearKeys();
+  deathFx={x:player.x,y:player.y,start:performance.now(),reason,shards:Array.from({length:48},(_,i)=>{
+    const a=i*Math.PI*2/48,sp=45+Math.random()*170;
+    return {x:player.x,y:player.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r:2+Math.random()*4};
+  })};
+  // La pantalla de muerte aparece después de la explosión.
+}
+function startHeartbeat(){
+  if(!audioCtx||!soundEnabled)return;
+  const t=audioCtx.currentTime;
+  for(let i=0;i<7;i++){
+    const base=t+i*.73;
+    for(const offset of [0,.20]){
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain(),f=audioCtx.createBiquadFilter();
+      o.type="sine";o.frequency.setValueAtTime(82,base+offset);o.frequency.exponentialRampToValueAtTime(36,base+offset+.18);
+      f.type="lowpass";f.frequency.value=115;
+      g.gain.setValueAtTime(.0001,base+offset);g.gain.exponentialRampToValueAtTime(.36,base+offset+.015);g.gain.exponentialRampToValueAtTime(.0001,base+offset+.25);
+      o.connect(f).connect(g).connect(audioOutput());o.start(base+offset);o.stop(base+offset+.27);
+    }
+  }
+}
+function showDeathScreen(reason){
+  $("deathCurtain").classList.remove("active");
+  modal("meteor","MISIÓN FALLIDA",reason,
+    "El astronauta ha perdido la señal. Puedes volver a intentarlo o elegir otra ley de Newton.",
+    "↻ Reintentar misión",restart);
+  $("modalTitle").style.color="#ff7894";
+  $("modalButton").insertAdjacentHTML("afterend",'<button id="deathChoose" class="btn" style="margin:12px 0 0 10px">Elegir misión</button>');
+  $("deathChoose").onclick=()=>{hideModal();showMissionSelector();};
 }
 
 function win(){
+  stopEngine();
   if(!running)return;
+  playSound("win");setMusicMood("pause");
   running=false;
   clearKeys();
 
@@ -848,7 +1115,7 @@ function clampBody(body){
 }
 
 function update(dt){
-  if(!running)return;
+  if(!running){updateEngine(false);return;}
   dt=Math.min(dt,.032);
   elapsed+=dt;
   frame++;
@@ -865,6 +1132,7 @@ function update(dt){
     dy/=inputLength;
   }
 
+  updateEngine(Boolean(inputLength));
   const thrustAcc=THRUST/MASS*SCALE;
   const gravity=gravityAt(player.x,player.y);
   const responseAccX=inputLength?(dx*MAX_SPEED-player.vx)*CONTROL_RESPONSE:0;
@@ -934,6 +1202,7 @@ function update(dt){
     if(!s.taken&&Math.hypot(player.x-s.x,player.y-s.y)<30){
       s.taken=true;
       collected++;
+      playSound("star");
     }
   }
 
@@ -959,23 +1228,28 @@ function update(dt){
     }
   }
 
+  updateHazards(dt);
+  if(!running)return;
+
   // Drones guardianes: disparan proyectiles lentos y visibles.
   shotTimer+=dt;
-  const interval=[2.8,2.4,1.9][level];
+  const interval=[2.25,1.95,1.65][level];
   if(shotTimer>=interval){
     shotTimer=0;
     for(const drone of sentries){
       const angle=Math.atan2(player.y-drone.y,player.x-drone.x);
-      const speed=[92,105,120][level];
+      const speed=[105,120,138][level];
       projectiles.push({x:drone.x,y:drone.y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,life:6});
+      playSound("shoot",.18);
     }
   }
   for(const bullet of projectiles){
+    if(bullet.homing){const angle=Math.atan2(player.y-bullet.y,player.x-bullet.x);bullet.vx+=Math.cos(angle)*18*dt;bullet.vy+=Math.sin(angle)*18*dt;}
     bullet.x+=bullet.vx*dt;
     bullet.y+=bullet.vy*dt;
     bullet.life-=dt;
     if(Math.hypot(player.x-bullet.x,player.y-bullet.y)<player.r+7){
-      fail("Un dron de seguridad te alcanzó con un proyectil de energía.");
+      fail("Un proyectil enemigo alcanzó tu traje espacial.");
       return;
     }
   }
@@ -1179,6 +1453,77 @@ function drawSentries(){
   }
 }
 
+
+// Nuevos peligros: cazadores móviles, torretas láser y minas pulsantes.
+function makeHazards(lvl){
+  const sets=[
+    [{type:"hunter",x:620,y:465,homeX:620,homeY:465,r:13,phase:0},
+     {type:"mine",x:365,y:105,r:14,phase:1.1}],
+    [{type:"hunter",x:740,y:440,homeX:740,homeY:440,r:13,phase:1},
+     {type:"mine",x:525,y:265,r:15,phase:.8}],
+    [{type:"hunter",x:470,y:440,homeX:470,homeY:440,r:14,phase:0},
+     {type:"hunter",x:780,y:95,homeX:780,homeY:95,r:14,phase:2},
+     {type:"turret",x:155,y:470,r:17,phase:1},
+     {type:"mine",x:305,y:95,r:15,phase:1},
+     {type:"mine",x:570,y:265,r:15,phase:2}]
+  ];
+  return sets[lvl].map(h=>({...h,cooldown:1.2+h.phase*.4}));
+}
+function updateHazards(dt){
+  for(const h of hazards){
+    h.cooldown-=dt;
+    if(h.type==="hunter"){
+      const a=Math.atan2(player.y-h.y,player.x-h.x);
+      const pursuit=Math.hypot(player.x-h.x,player.y-h.y)<([270,190,215][level]);
+      const tx=pursuit?Math.cos(a)*([30,25,34][level]):Math.sin(elapsed*.9+h.phase)*20;
+      const ty=pursuit?Math.sin(a)*([30,25,34][level]):Math.cos(elapsed*.8+h.phase)*20;
+      h.x=Math.max(28,Math.min(W-28,h.x+tx*dt));
+      h.y=Math.max(48,Math.min(H-28,h.y+ty*dt));
+    }
+    if(h.type==="turret"&&h.cooldown<=0){
+      h.cooldown=[3.6,2.9,2.3][level];
+      const a=Math.atan2(player.y-h.y,player.x-h.x);
+      for(const offset of [-.17,0,.17]){
+        const v=([125,105,125][level]);
+        projectiles.push({x:h.x,y:h.y,vx:Math.cos(a+offset)*v,vy:Math.sin(a+offset)*v,life:4});
+      }
+      playSound("laser",.45);
+    }
+    if(h.type==="mine"&&h.cooldown<=0){h.cooldown=1.8;playSound("mine",.18);}
+    const collision=h.r+player.r-(h.type==="mine"?1:4);
+    if(Math.hypot(player.x-h.x,player.y-h.y)<collision){
+      fail(h.type==="mine"?"Has tocado una mina de proximidad.":h.type==="hunter"?"Un cazador espacial te ha interceptado.":"Has chocado contra una torreta láser.");
+      return;
+    }
+  }
+}
+function drawHazards(){
+  for(const h of hazards){
+    ctx.save();ctx.translate(h.x,h.y);
+    if(h.type==="hunter"){
+      ctx.rotate(Math.sin(elapsed*2+h.phase)*.22);
+      ctx.shadowColor="#ff6b52";ctx.shadowBlur=15;
+      ctx.fillStyle="#a83f58";ctx.beginPath();ctx.moveTo(19,0);ctx.lineTo(-12,-12);ctx.lineTo(-7,0);ctx.lineTo(-12,12);ctx.closePath();ctx.fill();
+      circle(0,0,5,"#ffde7b");
+      ctx.shadowBlur=0;
+    }else if(h.type==="turret"){
+      ctx.rotate(Math.atan2(player.y-h.y,player.x-h.x));
+      ctx.shadowColor="#b978ff";ctx.shadowBlur=12;
+      circle(0,0,16,"#4a316c");
+      rounded(2,-5,23,10,3,"#a977f4");circle(0,0,7,"#e1bbff");
+    }else{
+      const pulse=1+Math.sin(elapsed*5+h.phase)*.15;
+      ctx.rotate(elapsed*.9+h.phase);
+      ctx.shadowColor="#ffba49";ctx.shadowBlur=18;
+      ctx.strokeStyle="#ffb24d";ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(0,0,h.r*pulse,0,Math.PI*2);ctx.stroke();
+      for(let i=0;i<6;i++){const a=i*Math.PI/3;ctx.beginPath();ctx.moveTo(Math.cos(a)*8,Math.sin(a)*8);ctx.lineTo(Math.cos(a)*19,Math.sin(a)*19);ctx.stroke();}
+      circle(0,0,6,"#ff563d");
+    }
+    ctx.restore();
+  }
+}
+
 function drawPortal(){
   ctx.save();
   ctx.shadowColor="#4ce7ff";
@@ -1284,6 +1629,7 @@ function draw(){
   walls.forEach(drawWall);
   meteors.forEach(drawMeteor);
   drawSentries();
+  drawHazards();
 
   if(level===1){
     ctx.strokeStyle="#54e6ac";
@@ -1317,24 +1663,40 @@ function draw(){
   });
   ctx.globalAlpha=1;
 
-  drawAstronaut();
+  if(!deathFx)drawAstronaut();
 
   ctx.fillStyle="#e0edff";
   ctx.font="bold 15px system-ui";
   ctx.textAlign="left";
 
   const instructions=[
-    "Recoge estrellas y esquiva drones, meteoritos y planetas",
-    "Esquiva los disparos y lleva la caja a la zona de carga",
-    "Recoge estrellas, esquiva meteoritos y alcanza el portal"
+    "Esquiva cazadores, minas, drones y campos gravitacionales",
+    "Evita torretas y minas mientras transportas la caja",
+    "Sobrevive a torretas, cazadores, minas y meteoritos"
   ];
   ctx.fillText(instructions[level],20,30);
+  if(deathFx){
+    const age=Math.min(2.3,(performance.now()-deathFx.start)/1000);
+    ctx.save();
+    const flash=Math.max(0,1-age*3);
+    ctx.fillStyle=`rgba(255,65,90,${flash*.48})`;ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=Math.max(0,1-age/2.3);
+    for(const sh of deathFx.shards){
+      const x=sh.x+sh.vx*age,y=sh.y+sh.vy*age;
+      circle(x,y,sh.r*(1-age/2.6),"#ffb77d");
+    }
+    ctx.strokeStyle=`rgba(255,125,155,${Math.max(0,1-age/1.4)})`;ctx.lineWidth=5;
+    ctx.beginPath();ctx.arc(deathFx.x,deathFx.y,age*180,0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+    if(age>=1.6&&deathPending){deathPending=false;showDeathScreen(deathFx.reason);}
+  }
 }
 
 function loop(timestamp){
   if(!last)last=timestamp;
   const dt=(timestamp-last)/1000;
   last=timestamp;
+  updateMusic();
   update(dt);
   draw();
   requestAnimationFrame(loop);
